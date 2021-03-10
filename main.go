@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	//"gopkg.in/yaml.v2"
 )
 
 // TODO Route graph should have paths for same host linked to host node. Host nodes should use binary search or hashing.
@@ -12,6 +13,8 @@ import (
 // TODO Strip port from both
 
 const ENDPOINT = ":8080"
+
+var configFilePath *string
 
 type Route struct {
 	host           string
@@ -25,7 +28,7 @@ var DEMO_ROUTES = []Route{
 }
 
 func main() {
-	http.HandleFunc("/", router)
+	http.HandleFunc("/", httpRouter)
 
 	fmt.Printf("Server ready: %s\n", ENDPOINT)
 	err := http.ListenAndServe(ENDPOINT, nil)
@@ -34,7 +37,16 @@ func main() {
 	}
 }
 
-func router(response http.ResponseWriter, request *http.Request) {
+func parseCliArgs() {
+	// TODO iteratively parse args then check args
+	// TODO or use "flag" package
+}
+
+func readConfigFile() {
+	// TODO
+}
+
+func httpRouter(response http.ResponseWriter, request *http.Request) {
 	// Only GET allowed
 	if request.Method != http.MethodGet {
 		response.WriteHeader(http.StatusMethodNotAllowed)
