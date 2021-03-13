@@ -1,67 +1,148 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"regexp"
-	"strings"
-	//"gopkg.in/yaml.v2"
 )
 
 // TODO Route graph should have paths for same host linked to host node. Host nodes should use binary search or hashing.
 // TODO store all matches and pick highest priority
 // TODO Strip port from both
+// TODO prometheus statistics
+// TODO Allow all HTTP methods
+// TODO Allow capture groups and reusing variables in dst
+// TODO Reverse proxy headers
 
-const ENDPOINT = ":8080"
+const DEFAULT_ENDPOINT = ":8080"
+const DEFAULT_ROUTE_FILE_PATH = "routes.json"
+const DEFAULT_REDIRECT_STATUS = 302
 
-var configFilePath *string
+var debug = false
+var endpoint = DEFAULT_ENDPOINT
+var routeFilePath = DEFAULT_ROUTE_FILE_PATH
 
 type Route struct {
-	host           string
-	pathRegex      *regexp.Regexp
-	destinationUrl string
-	priority       int
+	Name           string `json:"name"`
+	SourceUrl      string `json:"source_url"`
+	DestinationUrl string `json:"destination_url"`
+	Priority       int    `json:"priority"`
+	RedirectStatus int    `json:"redirect_status"`
 }
 
-var DEMO_ROUTES = []Route{
-	{"localhost", regexp.MustCompile(`^/a.*/b$`), "/TODO", 0},
+type CompiledRoute struct {
+	Route
+	CompiledSourceUrl *regexp.Regexp
 }
+
+var routes []CompiledRoute
 
 func main() {
-	http.HandleFunc("/", httpRouter)
-
-	fmt.Printf("Server ready: %s\n", ENDPOINT)
-	err := http.ListenAndServe(ENDPOINT, nil)
-	if err != nil {
-		fmt.Printf("Server error: %s\n", err)
-	}
-}
-
-func parseCliArgs() {
-	// TODO iteratively parse args then check args
-	// TODO or use "flag" package
-}
-
-func readConfigFile() {
-	// TODO
-}
-
-func httpRouter(response http.ResponseWriter, request *http.Request) {
-	// Only GET allowed
-	if request.Method != http.MethodGet {
-		response.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(response, "Method not allowed.\n")
+	if success := parseCliArgs(); !success {
 		return
 	}
 
-	// Discard port if present
-	host := strings.Split(request.Host, ":")[0]
+	if err := readRouteFile(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return
+	}
+
+	if err := runHttpServer(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return
+	}
+}
+
+func parseCliArgs() bool {
+	var showHelp bool
+	flag.BoolVar(&showHelp, "help", false, "Show help.")
+	flag.BoolVar(&debug, "debug", false, "Show extra debug messages.")
+	flag.StringVar(&endpoint, "endpoint", DEFAULT_ENDPOINT, "The address-port endpoint to bind to.")
+	flag.StringVar(&routeFilePath, "route-file", DEFAULT_ROUTE_FILE_PATH, "The path to the routes JSON config file.")
+	// FIXME this returns?
+	fmt.Print("Hello1\n")
+	flag.Parse()
+	fmt.Print("Hello2\n")
+
+	// Show help and exit if requested
+	if showHelp {
+		flag.CommandLine.SetOutput(os.Stdout)
+		flag.PrintDefaults()
+		return false
+	}
+
+	return true
+}
+
+func readRouteFile() error {
+	// Open file
+	file, openErr := os.Open(routeFilePath)
+	if openErr != nil {
+		return fmt.Errorf("Failed to open route file: %v", openErr)
+	}
+	defer file.Close()
+
+	// Read file
+	data, readErr := io.ReadAll(file)
+	if readErr != nil {
+		return fmt.Errorf("Failed to read route file: %v", readErr)
+	}
+
+	// Parse routes
+	// TODO extract the "routes" array in the root object
+	parseErr := json.Unmarshal(data, &routes)
+	if parseErr != nil {
+		return fmt.Errorf("Failed to parse routes from file: %v", parseErr)
+	}
+
+	// Validate routes
+	// TODO validate routes, scrap invalid ones, clear routes array
+
+	// Compile source URLs
+	// TODO
+	// TODO ignore if error
+
+	// Display info
+	fmt.Printf("Loaded %v route(s).\n", len(routes))
+	if debug {
+		for i, route := range routes {
+			fmt.Printf("Route %v:\n", i)
+			fmt.Printf("  Name:            %v\n", route.Name)
+			fmt.Printf("  Source URL:      %v\n", route.SourceUrl)
+			fmt.Printf("  Destination URL: %v\n", route.DestinationUrl)
+			fmt.Printf("  Priority:        %v\n", route.Priority)
+			fmt.Printf("  Redirect status: %v\n", route.RedirectStatus)
+			fmt.Printf("\n")
+		}
+	}
+
+	return nil
+}
+
+func runHttpServer() error {
+	http.HandleFunc("/", httpRouter)
+	err := http.ListenAndServe(endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("Error while running HTTP server: %v", err)
+	}
+	return nil
+}
+
+func httpRouter(response http.ResponseWriter, request *http.Request) {
+	// Build source URL
+	// TODO accept reverse proxy headers
+	scheme := "http"
+	url := fmt.Sprintf("%v://%v%v", scheme, request.Host, request.URL)
 
 	// Find matching routes
-	var bestRoute *Route = nil
-	for _, route := range DEMO_ROUTES {
-		if host == route.host && route.pathRegex.MatchString(request.URL.Path) {
-			if bestRoute == nil || route.priority > bestRoute.priority {
+	var bestRoute *CompiledRoute = nil
+	for _, route := range routes {
+		if route.CompiledSourceUrl.MatchString(url) {
+			if bestRoute == nil || route.Priority > bestRoute.Priority {
 				bestRoute = &route
 			}
 		}
@@ -74,6 +155,14 @@ func httpRouter(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 
+	// Build destination URL
+	// TODO insert variables
+	destinationUrl := bestRoute.DestinationUrl
+
 	// Redirect
-	http.Redirect(response, request, bestRoute.destinationUrl, 302)
+	redirectStatus := bestRoute.RedirectStatus
+	if redirectStatus == 0 {
+		redirectStatus = DEFAULT_REDIRECT_STATUS
+	}
+	http.Redirect(response, request, destinationUrl, redirectStatus)
 }
