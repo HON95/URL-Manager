@@ -1,5 +1,0 @@
-[{
-    "name": "First!",
-    "source_url": "https?://localhost(:[0-9]+)?/hello(/5)?",
-    "destination_url": "/world/{1}"
-}]

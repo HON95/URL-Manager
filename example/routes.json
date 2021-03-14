@@ -1,0 +1,13 @@
+[{
+    "id": "typical-example",
+    "source_url": "^https://example.net/discord$",
+    "destination_url": "https://discord.com/invite/X"
+},{
+    "id": "hello-world",
+    "source_url": "^https?://localhost(?::[0-9]+)?/hello$",
+    "destination_url": "/world"
+},{
+    "id": "hello-world-number",
+    "source_url": "^https?://localhost(?::[0-9]+)?/hello/([0-9]+)$",
+    "destination_url": "/world/$1"
+}]
