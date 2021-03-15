@@ -23,7 +23,7 @@ var debug = false
 var endpoint = defaultEndpoint
 var routeFilePath = defaultRouteFilePath
 var metricsPath = ""
-var compiledRouteIdPattern = regexp.MustCompile(`^[0-9a-zA-Z-_]+$`)
+var compiledRouteIDPattern = regexp.MustCompile(`^[0-9a-zA-Z-_]+$`)
 
 var metricsInfoGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Name: "url_manager_info",
@@ -46,20 +46,20 @@ var metricsRouteMalformedDestinationCounter = promauto.NewCounterVec(prometheus.
 	Help: "The number of times a route has resulted in an invalid destination URL.",
 }, []string{"route"})
 
-type Route struct {
-	Id             string `json:"id"`
-	SourceUrl      string `json:"source_url"`
-	DestinationUrl string `json:"destination_url"`
+type route struct {
+	ID             string `json:"id"`
+	SourceURL      string `json:"source_url"`
+	DestinationURL string `json:"destination_url"`
 	Priority       int    `json:"priority"`
 	RedirectStatus int    `json:"redirect_status"`
 }
 
-type CompiledRoute struct {
-	Route
-	CompiledSourceUrl *regexp.Regexp
+type compiledRoute struct {
+	route
+	CompiledSourceURL *regexp.Regexp
 }
 
-var routes []CompiledRoute
+var routes []compiledRoute
 
 func main() {
 	fmt.Printf("%v version %v by %v.\n\n", appName, appVersion, appAuthor)
@@ -102,14 +102,14 @@ func readRouteFile() error {
 	}
 
 	// Parse routes from file
-	var rawRoutes []Route
+	var rawRoutes []route
 	parseErr := json.Unmarshal(data, &rawRoutes)
 	if parseErr != nil {
 		return fmt.Errorf("Failed to parse routes from file (malformed JSON file?): \n%v", parseErr)
 	}
 
 	// Validate and compile routes
-	routes = make([]CompiledRoute, 0)
+	routes = make([]compiledRoute, 0)
 	for i, rawRoute := range rawRoutes {
 		if compiledRoute, err := compileRoute(&rawRoute); err == nil {
 			routes = append(routes, compiledRoute)
@@ -123,9 +123,9 @@ func readRouteFile() error {
 	if debug {
 		for i, route := range routes {
 			fmt.Printf("Route %v:\n", i)
-			fmt.Printf("  Name:            %v\n", route.Id)
-			fmt.Printf("  Source URL:      %v\n", route.SourceUrl)
-			fmt.Printf("  Destination URL: %v\n", route.DestinationUrl)
+			fmt.Printf("  Name:            %v\n", route.ID)
+			fmt.Printf("  Source URL:      %v\n", route.SourceURL)
+			fmt.Printf("  Destination URL: %v\n", route.DestinationURL)
 			fmt.Printf("  Priority:        %v\n", route.Priority)
 			fmt.Printf("  Redirect status: %v\n", route.RedirectStatus)
 		}
@@ -134,32 +134,32 @@ func readRouteFile() error {
 	return nil
 }
 
-func compileRoute(rawRoute *Route) (CompiledRoute, error) {
-	var compiledRoute CompiledRoute
+func compileRoute(rawRoute *route) (compiledRoute, error) {
+	var compiledRoute compiledRoute
 
 	// ID
-	if len(rawRoute.Id) == 0 || !compiledRouteIdPattern.MatchString(rawRoute.Id) {
-		return compiledRoute, fmt.Errorf("Route ID contains illegal characters.")
+	if len(rawRoute.ID) == 0 || !compiledRouteIDPattern.MatchString(rawRoute.ID) {
+		return compiledRoute, fmt.Errorf("Route ID contains illegal characters")
 	}
-	compiledRoute.Id = rawRoute.Id
+	compiledRoute.ID = rawRoute.ID
 
 	// Source URL
-	if len(rawRoute.SourceUrl) == 0 {
-		return compiledRoute, fmt.Errorf("Missing source URL.")
+	if len(rawRoute.SourceURL) == 0 {
+		return compiledRoute, fmt.Errorf("Missing source URL")
 	}
-	compiledRoute.SourceUrl = rawRoute.SourceUrl
-	if result, err := regexp.Compile(rawRoute.SourceUrl); err == nil {
-		compiledRoute.CompiledSourceUrl = result
+	compiledRoute.SourceURL = rawRoute.SourceURL
+	if result, err := regexp.Compile(rawRoute.SourceURL); err == nil {
+		compiledRoute.CompiledSourceURL = result
 	} else {
 		return compiledRoute, fmt.Errorf("Route source URL regexp won't compile.\n%v", err)
 	}
 
 	// Destination URL
 	// Postpone format check for after variable substitution
-	if len(rawRoute.DestinationUrl) == 0 {
-		return compiledRoute, fmt.Errorf("Missing destination URL.")
+	if len(rawRoute.DestinationURL) == 0 {
+		return compiledRoute, fmt.Errorf("Missing destination URL")
 	}
-	compiledRoute.DestinationUrl = rawRoute.DestinationUrl
+	compiledRoute.DestinationURL = rawRoute.DestinationURL
 
 	// Priority
 	// Defaults to 0
@@ -173,7 +173,7 @@ func compileRoute(rawRoute *Route) (CompiledRoute, error) {
 	case status >= 301 && status <= 308:
 		compiledRoute.RedirectStatus = status
 	default:
-		return compiledRoute, fmt.Errorf("Invalid redirect status value.")
+		return compiledRoute, fmt.Errorf("Invalid redirect status value")
 	}
 
 	return compiledRoute, nil
@@ -199,26 +199,26 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 	// Build source URL
 	// TODO accept reverse proxy headers
 	scheme := "http"
-	sourceUrl := fmt.Sprintf("%v://%v%v", scheme, request.Host, request.URL)
+	sourceURL := fmt.Sprintf("%v://%v%v", scheme, request.Host, request.URL)
 	if debug {
-		fmt.Printf("Request: url=\"%v\"\n", sourceUrl)
+		fmt.Printf("Request: url=\"%v\"\n", sourceURL)
 	}
 
 	// Find matching routes (linear search)
-	var bestRouteId = -1
+	var bestRouteID = -1
 	for i, route := range routes {
-		if route.CompiledSourceUrl.MatchString(sourceUrl) {
+		if route.CompiledSourceURL.MatchString(sourceURL) {
 			if debug {
-				fmt.Printf("Potential match: name=\"%v\" priority=\"%v\" url=\"%v\"\n", route.Id, route.Priority, route.DestinationUrl)
+				fmt.Printf("Potential match: name=\"%v\" priority=\"%v\" url=\"%v\"\n", route.ID, route.Priority, route.DestinationURL)
 			}
-			if bestRouteId == -1 || route.Priority > routes[bestRouteId].Priority {
-				bestRouteId = i
+			if bestRouteID == -1 || route.Priority > routes[bestRouteID].Priority {
+				bestRouteID = i
 			}
 		}
 	}
 
 	// Check if no matches
-	if bestRouteId == -1 {
+	if bestRouteID == -1 {
 		metricsNotFoundCounter.Inc()
 		if debug {
 			fmt.Printf("No matches.\n")
@@ -229,11 +229,11 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 	}
 
 	// Build destination URL
-	route := &routes[bestRouteId]
-	metricsRouteChosenCounter.With(prometheus.Labels{"route": route.Id}).Inc()
-	destinationUrl := route.CompiledSourceUrl.ReplaceAllString(sourceUrl, route.DestinationUrl)
-	if _, err := url.ParseRequestURI(destinationUrl); err != nil {
-		metricsRouteMalformedDestinationCounter.With(prometheus.Labels{"route": route.Id}).Inc()
+	route := &routes[bestRouteID]
+	metricsRouteChosenCounter.With(prometheus.Labels{"route": route.ID}).Inc()
+	destinationURL := route.CompiledSourceURL.ReplaceAllString(sourceURL, route.DestinationURL)
+	if _, err := url.ParseRequestURI(destinationURL); err != nil {
+		metricsRouteMalformedDestinationCounter.With(prometheus.Labels{"route": route.ID}).Inc()
 		if debug {
 			fmt.Printf("Error: Malformed destination URL.\n")
 		}
@@ -242,9 +242,9 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if debug {
-		fmt.Printf("Result: name=\"%v\" status=\"%v\" url=\"%v\"\n", route.Id, route.RedirectStatus, destinationUrl)
+		fmt.Printf("Result: name=\"%v\" status=\"%v\" url=\"%v\"\n", route.ID, route.RedirectStatus, destinationURL)
 	}
 
 	// Redirect
-	http.Redirect(response, request, destinationUrl, route.RedirectStatus)
+	http.Redirect(response, request, destinationURL, route.RedirectStatus)
 }
