@@ -23,42 +23,42 @@ jobs:
       run: go install golang.org/x/lint/golint@latest && ~/go/bin/golint -set_exit_status ./...
     - name: Build
       run: go build -o url-manager
-  # publish-bleeding:
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-  #   needs: check
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v2
-  #   - name: Extract version
-  #     run: echo "::set-env name=VERSION::$(echo 0.0.0-SNAPSHOT+$(TZ=Etc/GMT date "+%Y-%m-%dT%H:%M:%SZ"))"
-  #   - name: Write version to file
-  #     run: sed -i "s/const appVersion.*/const appVersion = \"$VERSION\"/g" meta.go
-  #   - name: Push to Docker Hub
-  #     uses: docker/build-push-action@v1
-  #     with:
-  #       username: ${{secrets.DOCKER_USERNAME}}
-  #       password: ${{secrets.DOCKER_PASSWORD}}
-  #       repository: hon95/url-manager
-  #       tags: latest
-  # publish-stable:
-  #   if: github.event_name == 'release' && github.event.action == 'published' && startsWith(github.ref, 'refs/tags/v')
-  #   needs: check
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v2
-  #   - name: Extract versions
-  #     run: |
-  #       echo "::set-env name=VERSION::$(echo ${GITHUB_REF#refs/tags/v})"
-  #       echo "::set-env name=VERSION_MAJOR::$(echo $VERSION | grep -Po '^\d+')"
-  #       echo "::set-env name=VERSION_MINOR::$(echo $VERSION | grep -Po '^\d+\.\d+')"
-  #   - name: Write version to file
-  #     run: sed -i "s/const appVersion.*/const appVersion = \"$VERSION\"/g" meta.go
-  #   - name: Push to Docker Hub
-  #     uses: docker/build-push-action@v1
-  #     with:
-  #       username: ${{secrets.DOCKER_USERNAME}}
-  #       password: ${{secrets.DOCKER_PASSWORD}}
-  #       repository: hon95/url-manager
-  #       tags: latest, ${{env.VERSION_MAJOR}}, ${{env.VERSION_MINOR}}, ${{env.VERSION}}
+  publish-bleeding:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Extract version
+      run: echo "::set-env name=VERSION::$(echo 0.0.0-SNAPSHOT+$(TZ=Etc/GMT date "+%Y-%m-%dT%H:%M:%SZ"))"
+    - name: Write version to file
+      run: sed -i "s/const appVersion.*/const appVersion = \"$VERSION\"/g" meta.go
+    - name: Push to Docker Hub
+      uses: docker/build-push-action@v1
+      with:
+        username: ${{secrets.DOCKER_USERNAME}}
+        password: ${{secrets.DOCKER_PASSWORD}}
+        repository: hon95/url-manager
+        tags: latest
+  publish-stable:
+    if: github.event_name == 'release' && github.event.action == 'published' && startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Extract versions
+      run: |
+        echo "::set-env name=VERSION::$(echo ${GITHUB_REF#refs/tags/v})"
+        echo "::set-env name=VERSION_MAJOR::$(echo $VERSION | grep -Po '^\d+')"
+        echo "::set-env name=VERSION_MINOR::$(echo $VERSION | grep -Po '^\d+\.\d+')"
+    - name: Write version to file
+      run: sed -i "s/const appVersion.*/const appVersion = \"$VERSION\"/g" meta.go
+    - name: Push to Docker Hub
+      uses: docker/build-push-action@v1
+      with:
+        username: ${{secrets.DOCKER_USERNAME}}
+        password: ${{secrets.DOCKER_PASSWORD}}
+        repository: hon95/url-manager
+        tags: latest, ${{env.VERSION_MAJOR}}, ${{env.VERSION_MINOR}}, ${{env.VERSION}}
