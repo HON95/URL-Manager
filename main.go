@@ -15,16 +15,20 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const DEFAULT_ENDPOINT = ":8080"
-const DEFAULT_ROUTE_FILE_PATH = "routes.json"
-const DEFAULT_REDIRECT_STATUS = 302
+const defaultEndpoint = ":8080"
+const defaultRouteFilePath = "routes.json"
+const defaultRedirectStatus = 302
 
 var debug = false
-var endpoint = DEFAULT_ENDPOINT
-var routeFilePath = DEFAULT_ROUTE_FILE_PATH
+var endpoint = defaultEndpoint
+var routeFilePath = defaultRouteFilePath
 var metricsPath = ""
 var compiledRouteIdPattern = regexp.MustCompile(`^[0-9a-zA-Z-_]+$`)
 
+var metricsInfoGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "url_manager_info",
+	Help: "Metadata about the exporter.",
+}, []string{"version"})
 var metricsTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 	Name: "url_manager_requests_total",
 	Help: "The total number of received requests.",
@@ -58,6 +62,8 @@ type CompiledRoute struct {
 var routes []CompiledRoute
 
 func main() {
+	fmt.Printf("%v version %v by %v.\n\n", appName, appVersion, appAuthor)
+
 	parseCliArgs()
 
 	if err := readRouteFile(); err != nil {
@@ -65,7 +71,7 @@ func main() {
 		return
 	}
 
-	if err := runHttpServer(); err != nil {
+	if err := runServer(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return
 	}
@@ -74,8 +80,8 @@ func main() {
 func parseCliArgs() {
 	flag.BoolVar(&debug, "debug", false, "Show extra debug messages.")
 	flag.StringVar(&metricsPath, "metrics", "", "Metrics endpoint. Disabled if not set.")
-	flag.StringVar(&endpoint, "endpoint", DEFAULT_ENDPOINT, "The address-port endpoint to bind to.")
-	flag.StringVar(&routeFilePath, "route-file", DEFAULT_ROUTE_FILE_PATH, "The path to the routes JSON config file.")
+	flag.StringVar(&endpoint, "endpoint", defaultEndpoint, "The address-port endpoint to bind to.")
+	flag.StringVar(&routeFilePath, "route-file", defaultRouteFilePath, "The path to the routes JSON config file.")
 
 	// Exits on error
 	flag.Parse()
@@ -163,7 +169,7 @@ func compileRoute(rawRoute *Route) (CompiledRoute, error) {
 	status := rawRoute.RedirectStatus
 	switch {
 	case status == 0:
-		compiledRoute.RedirectStatus = DEFAULT_REDIRECT_STATUS
+		compiledRoute.RedirectStatus = defaultRedirectStatus
 	case status >= 301 && status <= 308:
 		compiledRoute.RedirectStatus = status
 	default:
@@ -173,10 +179,11 @@ func compileRoute(rawRoute *Route) (CompiledRoute, error) {
 	return compiledRoute, nil
 }
 
-func runHttpServer() error {
+func runServer() error {
 	http.HandleFunc("/", handleRequest)
 	if len(metricsPath) > 0 {
 		fmt.Printf("Enabling metrics on \"%v\".\n", metricsPath)
+		metricsInfoGauge.With(prometheus.Labels{"version": appVersion}).Set(1)
 		http.Handle(metricsPath, promhttp.Handler())
 	}
 	if err := http.ListenAndServe(endpoint, nil); err != nil {

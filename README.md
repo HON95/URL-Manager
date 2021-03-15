@@ -31,6 +31,5 @@ See the dev/example Docker Compose file: [docker-compose.yml](dev/docker-compose
 ## TODO
 
 - CI and Docker image.
-- Version file and version in Prometheus metadata metric.
 - Metrics on separate port to avoid upstream filtering.
 - Simple unit tests.
