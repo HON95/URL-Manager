@@ -31,9 +31,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Extract version
-      run: echo "::set-env name=VERSION::$(echo 0.0.0-SNAPSHOT+$(TZ=Etc/GMT date "+%Y-%m-%dT%H:%M:%SZ"))"
+      run: echo "version=$(echo 0.0.0-SNAPSHOT+$(TZ=Etc/GMT date "+%Y-%m-%dT%H:%M:%SZ"))" >> $GITHUB_ENV
     - name: Write version to file
-      run: sed -i "s/const appVersion.*/const appVersion = \"$VERSION\"/g" meta.go
+      run: sed -i "s/const appVersion.*/const appVersion = \"${{ env.version }}\"/g" meta.go
     - name: Push to Docker Hub
       uses: docker/build-push-action@v1
       with:
@@ -50,15 +50,15 @@ jobs:
       uses: actions/checkout@v2
     - name: Extract versions
       run: |
-        echo "::set-env name=VERSION::$(echo ${GITHUB_REF#refs/tags/v})"
-        echo "::set-env name=VERSION_MAJOR::$(echo $VERSION | grep -Po '^\d+')"
-        echo "::set-env name=VERSION_MINOR::$(echo $VERSION | grep -Po '^\d+\.\d+')"
+        echo "version=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_ENV
+        echo "version_major=$(echo ${{ env.version }} | grep -Po '^\d+')" >> $GITHUB_ENV
+        echo "version_minor=$(echo ${{ env.version }} | grep -Po '^\d+\.\d+')" >> $GITHUB_ENV
     - name: Write version to file
-      run: sed -i "s/const appVersion.*/const appVersion = \"$VERSION\"/g" meta.go
+      run: sed -i "s/const appVersion.*/const appVersion = \"${{ env.version }}\"/g" meta.go
     - name: Push to Docker Hub
       uses: docker/build-push-action@v1
       with:
         username: ${{secrets.DOCKER_USERNAME}}
         password: ${{secrets.DOCKER_PASSWORD}}
         repository: hon95/url-manager
-        tags: latest, ${{env.VERSION_MAJOR}}, ${{env.VERSION_MINOR}}, ${{env.VERSION}}
+        tags: latest, ${{ env.version_major }}, ${{ env.version_minor }}, ${{ env.version }}
