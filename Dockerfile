@@ -9,7 +9,7 @@ COPY go.sum ./
 RUN go mod download
 
 # Build app
-COPY main.go ./
+COPY *.go ./
 RUN go build -v -o url-manager
 
 # Test
