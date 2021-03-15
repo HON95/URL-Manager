@@ -10,7 +10,7 @@ RUN go mod download
 
 # Build app
 COPY main.go ./
-RUN go build -o url-manager
+RUN go build -v -o url-manager
 
 # Test
 RUN go test -v .
