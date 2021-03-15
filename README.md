@@ -1,5 +1,12 @@
 # URL Manager
 
+[![GitHub release](https://img.shields.io/github/v/release/HON95/URL-Manager?label=Version)](https://github.com/HON95/URL-Manager/releases)
+[![CI](https://github.com/HON95/URL-Manager/workflows/CI/badge.svg?branch=master)](https://github.com/HON95/URL-Manager/actions?query=workflow%3ACI)
+[![FOSSA status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FHON95%2Fprometheus-nut-exporter.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FHON95%2Fprometheus-nut-exporter?ref=badge_shield)
+[![Docker pulls](https://img.shields.io/docker/pulls/hon95/url-manager?label=Docker%20Hub)](https://hub.docker.com/r/hon95/url-manager)
+
+Redirects URLs based on routes declared in a JSON file.
+
 ## Usage
 
 CLI arguments:
