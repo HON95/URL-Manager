@@ -1,0 +1,28 @@
+[{
+    "id": "hello-world",
+    "source_url": "^https?://localhost(?::[0-9]+)?/hello$",
+    "destination_url": "/world"
+},{
+    "id": "hello-world-number",
+    "source_url": "^https?://localhost(?::[0-9]+)?/hello/([0-9]+)$",
+    "destination_url": "/world/$1"
+},{
+    "id": "not-used",
+    "source_url": "^https://example\\.net/test$",
+    "destination_url": "/a",
+    "priority": 100
+},{
+    "id": "used",
+    "source_url": "^http://example\\.net:8080/test$",
+    "destination_url": "/b",
+    "priority": 200
+},{
+    "id": "permanent-redirect",
+    "source_url": "^http://example\\.net:8080/test2$",
+    "destination_url": "/test3",
+    "redirect_status": 308
+},{
+    "id": "https-example-net-discord",
+    "source_url": "^https://example\\.net/discord$",
+    "destination_url": "https://discord.com/invite/X"
+}]

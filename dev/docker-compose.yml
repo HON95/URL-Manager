@@ -1,0 +1,32 @@
+version: '3.7'
+
+services:
+  url-manager:
+    image: hon95/url-manager:latest
+    # Dev
+    build: ..
+    command:
+      - '--debug'
+      - '--metrics=/metrics'
+    user: 1000:1000
+    environment:
+      - TZ=Europe/Oslo
+    volumes:
+      - ./routes.json:/app/routes.json:ro
+    labels:
+      - 'traefik.http.routers.url-manager.rule=Host(`localhost`)'
+      - 'traefik.http.services.url-manager.loadbalancer.server.port=8080'
+    restart: unless-stopped
+
+  traefik:
+    image: traefik:latest
+    command:
+      - '--providers.docker'
+    environment:
+      - TZ=Europe/Oslo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # - ./traefik.yml:/etc/traefik/traefik.yml:ro
+    ports:
+      - 127.0.0.1:8081:80/tcp
+    restart: unless-stopped

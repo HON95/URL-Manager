@@ -23,7 +23,7 @@ var debug = false
 var endpoint = DEFAULT_ENDPOINT
 var routeFilePath = DEFAULT_ROUTE_FILE_PATH
 var metricsPath = ""
-var compiledRouteIdPattern = regexp.MustCompile(`^[0-9a-zA-Z-_ ]+$`)
+var compiledRouteIdPattern = regexp.MustCompile(`^[0-9a-zA-Z-_]+$`)
 
 var metricsTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 	Name: "url_manager_requests_total",
@@ -138,6 +138,9 @@ func compileRoute(rawRoute *Route) (CompiledRoute, error) {
 	compiledRoute.Id = rawRoute.Id
 
 	// Source URL
+	if len(rawRoute.SourceUrl) == 0 {
+		return compiledRoute, fmt.Errorf("Missing source URL.")
+	}
 	compiledRoute.SourceUrl = rawRoute.SourceUrl
 	if result, err := regexp.Compile(rawRoute.SourceUrl); err == nil {
 		compiledRoute.CompiledSourceUrl = result
@@ -161,7 +164,7 @@ func compileRoute(rawRoute *Route) (CompiledRoute, error) {
 	switch {
 	case status == 0:
 		compiledRoute.RedirectStatus = DEFAULT_REDIRECT_STATUS
-	case status >= 300 && status <= 308:
+	case status >= 301 && status <= 308:
 		compiledRoute.RedirectStatus = status
 	default:
 		return compiledRoute, fmt.Errorf("Invalid redirect status value.")
@@ -171,7 +174,7 @@ func compileRoute(rawRoute *Route) (CompiledRoute, error) {
 }
 
 func runHttpServer() error {
-	http.HandleFunc("/", httpRouter)
+	http.HandleFunc("/", handleRequest)
 	if len(metricsPath) > 0 {
 		fmt.Printf("Enabling metrics on \"%v\".\n", metricsPath)
 		http.Handle(metricsPath, promhttp.Handler())
@@ -183,7 +186,7 @@ func runHttpServer() error {
 	return nil
 }
 
-func httpRouter(response http.ResponseWriter, request *http.Request) {
+func handleRequest(response http.ResponseWriter, request *http.Request) {
 	metricsTotalCounter.Inc()
 
 	// Build source URL
