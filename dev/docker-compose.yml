@@ -7,6 +7,7 @@ services:
     build: ..
     command:
       - '--debug'
+      - '--endpoint=:8000'
       - '--metrics=/metrics'
     user: 1000:1000
     environment:
@@ -14,19 +15,28 @@ services:
     volumes:
       - ./routes.json:/app/routes.json:ro
     labels:
-      - 'traefik.http.routers.url-manager.rule=Host(`localhost`)'
-      - 'traefik.http.services.url-manager.loadbalancer.server.port=8080'
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.url-manager-http.entrypoints=http'
+      - 'traefik.http.routers.url-manager-http.rule=Host(`localhost`)'
+      - 'traefik.http.routers.url-manager-https.entrypoints=https'
+      - 'traefik.http.routers.url-manager-https.rule=Host(`localhost`)'
+      - 'traefik.http.routers.url-manager-https.tls=true'
+      - 'traefik.http.services.url-manager.loadbalancer.server.port=8000'
     restart: unless-stopped
 
   traefik:
     image: traefik:latest
     command:
+      # - '--log.level=DEBUG'
       - '--providers.docker'
+      - '--providers.docker.exposedbydefault=false'
+      - '--entrypoints.http.address=:8080'
+      - '--entrypoints.https.address=:8443'
     environment:
       - TZ=Europe/Oslo
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      - 127.0.0.1:8081:80/tcp
+      - 127.0.0.1:8080:8080/tcp
+      - 127.0.0.1:8443:8443/tcp
     restart: unless-stopped

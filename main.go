@@ -196,10 +196,18 @@ func runServer() error {
 func handleRequest(response http.ResponseWriter, request *http.Request) {
 	metricsTotalCounter.Inc()
 
+	// Get real scheme and host+port (if enabled)
+	realScheme := "http"
+	if forwardedProtos := request.Header["X-Forwarded-Proto"]; len(forwardedProtos) > 0 {
+		realScheme = forwardedProtos[0]
+	}
+	realHost := request.Host
+	if forwardedHosts := request.Header["X-Forwarded-Host"]; len(forwardedHosts) > 0 {
+		realHost = forwardedHosts[0]
+	}
+
 	// Build source URL
-	// TODO accept reverse proxy headers
-	scheme := "http"
-	sourceURL := fmt.Sprintf("%v://%v%v", scheme, request.Host, request.URL)
+	sourceURL := fmt.Sprintf("%v://%v%v", realScheme, realHost, request.URL)
 	if debug {
 		fmt.Printf("Request: url=\"%v\"\n", sourceURL)
 	}
@@ -224,7 +232,7 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 			fmt.Printf("No matches.\n")
 		}
 		response.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(response, "Not found.\n")
+		fmt.Fprintf(response, "404 Not found.\n")
 		return
 	}
 
@@ -238,7 +246,7 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 			fmt.Printf("Error: Malformed destination URL.\n")
 		}
 		response.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(response, "Malformed destination.\n")
+		fmt.Fprintf(response, "400 Malformed destination.\n")
 		return
 	}
 	if debug {

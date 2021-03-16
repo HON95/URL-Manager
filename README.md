@@ -7,6 +7,8 @@
 
 Redirects URLs based on routes declared in a JSON file.
 
+Intended to be used behind a reverse proxy (like Traefik), as it only handles HTTP but accepts `X-Forwarded-Host` and `X-Forwarded-Proto`.
+
 ## Usage
 
 CLI arguments:
@@ -37,6 +39,6 @@ See the dev/example Docker Compose file: [docker-compose.yml](dev/docker-compose
 
 ## TODO
 
-- CI and Docker image.
+- Test (manually) HTTPS
 - Metrics on separate port to avoid upstream filtering.
 - Simple unit tests.
