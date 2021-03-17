@@ -2,7 +2,7 @@ version: '3.7'
 
 services:
   url-manager:
-    image: hon95/url-manager:latest
+    image: hon95/url-manager:1
     command:
       #- '--log'
       - '--endpoint=:8080'
