@@ -19,7 +19,8 @@ const defaultEndpoint = ":8080"
 const defaultRouteFilePath = "routes.json"
 const defaultRedirectStatus = 302
 
-var debug = false
+var enableDebug = false
+var enableRequestLogging = false
 var endpoint = defaultEndpoint
 var routeFilePath = defaultRouteFilePath
 var metricsPath = ""
@@ -50,8 +51,8 @@ type route struct {
 	ID             string `json:"id"`
 	SourceURL      string `json:"source_url"`
 	DestinationURL string `json:"destination_url"`
-	Priority       int    `json:"priority"`
 	RedirectStatus int    `json:"redirect_status"`
+	Priority       int    `json:"priority"`
 }
 
 type compiledRoute struct {
@@ -78,7 +79,8 @@ func main() {
 }
 
 func parseCliArgs() {
-	flag.BoolVar(&debug, "debug", false, "Show extra debug messages.")
+	flag.BoolVar(&enableDebug, "debug", false, "Show debug messages.")
+	flag.BoolVar(&enableRequestLogging, "log", false, "Log requests.")
 	flag.StringVar(&metricsPath, "metrics", "", "Metrics endpoint. Disabled if not set.")
 	flag.StringVar(&endpoint, "endpoint", defaultEndpoint, "The address-port endpoint to bind to.")
 	flag.StringVar(&routeFilePath, "route-file", defaultRouteFilePath, "The path to the routes JSON config file.")
@@ -120,14 +122,14 @@ func readRouteFile() error {
 
 	// Display info
 	fmt.Printf("Loaded %v route(s).\n", len(routes))
-	if debug {
+	if enableDebug {
 		for i, route := range routes {
 			fmt.Printf("Route %v:\n", i)
 			fmt.Printf("  Name:            %v\n", route.ID)
 			fmt.Printf("  Source URL:      %v\n", route.SourceURL)
 			fmt.Printf("  Destination URL: %v\n", route.DestinationURL)
-			fmt.Printf("  Priority:        %v\n", route.Priority)
 			fmt.Printf("  Redirect status: %v\n", route.RedirectStatus)
+			fmt.Printf("  Priority:        %v\n", route.Priority)
 		}
 	}
 
@@ -196,10 +198,14 @@ func runServer() error {
 func handleRequest(response http.ResponseWriter, request *http.Request) {
 	metricsTotalCounter.Inc()
 
-	// Get real scheme and host+port (if enabled)
-	realScheme := "http"
+	// Get local or forwarded proto, domain and from-addr
+	realFrom := request.RemoteAddr
+	if forwardedFors := request.Header["X-Forwarded-For"]; len(forwardedFors) > 0 {
+		realFrom = forwardedFors[0]
+	}
+	realProto := "http"
 	if forwardedProtos := request.Header["X-Forwarded-Proto"]; len(forwardedProtos) > 0 {
-		realScheme = forwardedProtos[0]
+		realProto = forwardedProtos[0]
 	}
 	realHost := request.Host
 	if forwardedHosts := request.Header["X-Forwarded-Host"]; len(forwardedHosts) > 0 {
@@ -207,18 +213,12 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 	}
 
 	// Build source URL
-	sourceURL := fmt.Sprintf("%v://%v%v", realScheme, realHost, request.URL)
-	if debug {
-		fmt.Printf("Request: url=\"%v\"\n", sourceURL)
-	}
+	sourceURL := fmt.Sprintf("%v://%v%v", realProto, realHost, request.URL)
 
 	// Find matching routes (linear search)
 	var bestRouteID = -1
 	for i, route := range routes {
 		if route.CompiledSourceURL.MatchString(sourceURL) {
-			if debug {
-				fmt.Printf("Potential match: name=\"%v\" priority=\"%v\" url=\"%v\"\n", route.ID, route.Priority, route.DestinationURL)
-			}
 			if bestRouteID == -1 || route.Priority > routes[bestRouteID].Priority {
 				bestRouteID = i
 			}
@@ -228,11 +228,9 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 	// Check if no matches
 	if bestRouteID == -1 {
 		metricsNotFoundCounter.Inc()
-		if debug {
-			fmt.Printf("No matches.\n")
-		}
 		response.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(response, "404 Not found.\n")
+		logRequest(realFrom, 404, "", sourceURL, "")
 		return
 	}
 
@@ -241,18 +239,27 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 	metricsRouteChosenCounter.With(prometheus.Labels{"route": route.ID}).Inc()
 	destinationURL := route.CompiledSourceURL.ReplaceAllString(sourceURL, route.DestinationURL)
 	if _, err := url.ParseRequestURI(destinationURL); err != nil {
-		metricsRouteMalformedDestinationCounter.With(prometheus.Labels{"route": route.ID}).Inc()
-		if debug {
-			fmt.Printf("Error: Malformed destination URL.\n")
+		if enableDebug {
+			fmt.Fprintf(os.Stderr, "Malformed destination:\n")
+			fmt.Fprintf(os.Stderr, "  Route: \"%v\"\n", route.ID)
+			fmt.Fprintf(os.Stderr, "  Source URL: \"%v\"\n", sourceURL)
+			fmt.Fprintf(os.Stderr, "  Destination URL (template): \"%v\"\n", route.DestinationURL)
+			fmt.Fprintf(os.Stderr, "  Destination URL (actual): \"%v\"\n", destinationURL)
 		}
+		metricsRouteMalformedDestinationCounter.With(prometheus.Labels{"route": route.ID}).Inc()
 		response.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(response, "400 Malformed destination.\n")
+		logRequest(realFrom, 400, route.ID, sourceURL, "")
 		return
-	}
-	if debug {
-		fmt.Printf("Result: name=\"%v\" status=\"%v\" url=\"%v\"\n", route.ID, route.RedirectStatus, destinationURL)
 	}
 
 	// Redirect
 	http.Redirect(response, request, destinationURL, route.RedirectStatus)
+	logRequest(realFrom, route.RedirectStatus, route.ID, sourceURL, destinationURL)
+}
+
+func logRequest(clientAddr string, httpResult int, routeID string, sourceURL string, destinationURL string) {
+	if enableRequestLogging {
+		fmt.Printf("Request: client=\"%v\" status=\"%v\" route=\"%v\" source=\"%v\" destination=\"%v\"\n", clientAddr, httpResult, routeID, sourceURL, destinationURL)
+	}
 }

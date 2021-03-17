@@ -7,6 +7,7 @@ services:
     build: ..
     command:
       - '--debug'
+      - '--log'
       - '--endpoint=:8000'
       - '--metrics=/metrics'
     user: 1000:1000
@@ -17,9 +18,9 @@ services:
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.url-manager-http.entrypoints=http'
-      - 'traefik.http.routers.url-manager-http.rule=Host(`localhost`)'
+      - 'traefik.http.routers.url-manager-http.rule=Host(`localhost`) || Host(`example.net`) || Host(`www.example.net`)'
       - 'traefik.http.routers.url-manager-https.entrypoints=https'
-      - 'traefik.http.routers.url-manager-https.rule=Host(`localhost`)'
+      - 'traefik.http.routers.url-manager-https.rule=Host(`localhost`) || Host(`example.net`) || Host(`www.example.net`)'
       - 'traefik.http.routers.url-manager-https.tls=true'
       - 'traefik.http.services.url-manager.loadbalancer.server.port=8000'
     restart: unless-stopped

@@ -7,7 +7,7 @@
 
 Redirects URLs based on routes declared in a JSON file.
 
-Intended to be used behind a reverse proxy (like Traefik), as it only handles HTTP but accepts `X-Forwarded-Host` and `X-Forwarded-Proto`.
+Intended to be used behind a reverse proxy (like Traefik), as it only handles HTTP and accepts `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto`.
 
 ## Usage
 
@@ -16,7 +16,8 @@ CLI arguments:
 | Argument | Default | Description |
 | - | - | - |
 | `--help` | | Show usage. |
-| `--debug` | | Show extra debug messages. |
+| `--debug` | `false` | Show debug messages. |
+| `--log` | `false` | Log requests. |
 | `--endpoint` | `:8080` | The address-port endpoint to bind to. |
 | `--route-file` | `routes.json` | The path to the routes JSON config file. |
 | `--metrics` | `""` | Metrics endpoint. Disabled if not set. Should be blocked by the upstream reverse proxy to avoid leaking it. |
@@ -31,14 +32,54 @@ Route fields:
 | `priority` | `0` | If multiple routes match the source URL, the one with the highest priority is chosen. |
 | `redirect_status` | `302` | The HTTP redirect status code to use. |
 
-Example route file: [routes.json](dev/routes.json)
-
 ### Docker
 
 See the dev/example Docker Compose file: [docker-compose.yml](dev/docker-compose.yml)
 
+### Example Routes
+
+Route file example: [routes.json](dev/routes.json)
+
+HTTP-HTTPS redirect:
+
+```json
+{
+    "id": "http-redirect",
+    "source_url": "^http://(.*)$",
+    "destination_url": "https://$1",
+    "redirect_status": 308,
+    "priority": 1000,
+}
+```
+
+www redirect:
+
+```json
+{
+    "id": "www-redirect",
+    "source_url": "^https://www\\.(.*)$",
+    "destination_url": "https://$1",
+    "redirect_status": 308,
+    "priority": 1000
+}
+```
+
+External redirect:
+
+```json
+{
+    "id": "discord",
+    "source_url": "^https://example\\.net/discord$",
+    "destination_url": "https://discord.com/invite/X"
+}
+```
+
+## Development
+
+- Build (Go): `go build -o url-manager`
+- Lint: `golint ./..`
+- Build and run along Traefik (Docker Compose): `docker-compose -f dev/docker-compose.yml up --force-recreate --build`
+
 ## TODO
 
-- Test (manually) HTTPS
-- Metrics on separate port to avoid upstream filtering.
-- Simple unit tests.
+- Unit tests.

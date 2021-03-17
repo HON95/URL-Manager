@@ -5,6 +5,12 @@
     "priority": 1000,
     "redirect_status": 308
 },{
+    "id": "http-redirect-dev",
+    "source_url": "^http://(localhost):8080/(.*)$",
+    "destination_url": "https://$1:8443/$2",
+    "priority": 1010,
+    "redirect_status": 307
+},{
     "id": "www-redirect",
     "source_url": "^https://www\\.(.*)$",
     "destination_url": "https://$1",
