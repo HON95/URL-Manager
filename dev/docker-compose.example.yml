@@ -1,0 +1,32 @@
+version: '3.7'
+
+services:
+  url-manager:
+    image: hon95/url-manager:latest
+    command:
+      #- '--log'
+      - '--endpoint=:8080'
+      - '--metrics-endpoint=:8081'
+    user: 108:108
+    environment:
+      - TZ=Europe/Oslo
+    volumes:
+      - ./routes.json:/app/routes.json:ro
+    networks:
+      warp-url-manager: {}
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.services.url-manager.loadbalancer.server.port=8080'
+      # Domain 1
+      - 'traefik.http.routers.url-manager-domain1.entrypoints=https'
+      - 'traefik.http.routers.url-manager-domain1.rule=Host(`example.com`)'
+      - 'traefik.http.routers.url-manager-domain1.tls.certResolver=letsencrypt'
+      # Domain 2
+      - 'traefik.http.routers.url-manager-domain2.entrypoints=https'
+      - 'traefik.http.routers.url-manager-domain2.rule=Host(`example.net`)'
+      - 'traefik.http.routers.url-manager-domain2.tls.certResolver=letsencrypt'
+    restart: unless-stopped
+
+networks:
+  warp-url-manager:
+    external: true

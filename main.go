@@ -23,7 +23,7 @@ var enableDebug = false
 var enableRequestLogging = false
 var endpoint = defaultEndpoint
 var routeFilePath = defaultRouteFilePath
-var metricsPath = ""
+var metricsEndpoint = ""
 var compiledRouteIDPattern = regexp.MustCompile(`^[0-9a-zA-Z-_]+$`)
 
 var metricsInfoGauge = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -72,7 +72,7 @@ func main() {
 		return
 	}
 
-	if err := runServer(); err != nil {
+	if err := runServers(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return
 	}
@@ -81,9 +81,9 @@ func main() {
 func parseCliArgs() {
 	flag.BoolVar(&enableDebug, "debug", false, "Show debug messages.")
 	flag.BoolVar(&enableRequestLogging, "log", false, "Log requests.")
-	flag.StringVar(&metricsPath, "metrics", "", "Metrics endpoint. Disabled if not set.")
 	flag.StringVar(&endpoint, "endpoint", defaultEndpoint, "The address-port endpoint to bind to.")
 	flag.StringVar(&routeFilePath, "route-file", defaultRouteFilePath, "The path to the routes JSON config file.")
+	flag.StringVar(&metricsEndpoint, "metrics-endpoint", "", "Metrics address-port endpoint. Disabled if not set.")
 
 	// Exits on error
 	flag.Parse()
@@ -181,21 +181,31 @@ func compileRoute(rawRoute *route) (compiledRoute, error) {
 	return compiledRoute, nil
 }
 
-func runServer() error {
-	http.HandleFunc("/", handleRequest)
-	if len(metricsPath) > 0 {
-		fmt.Printf("Enabling metrics on \"%v\".\n", metricsPath)
-		metricsInfoGauge.With(prometheus.Labels{"version": appVersion}).Set(1)
-		http.Handle(metricsPath, promhttp.Handler())
+func runServers() error {
+	metricsInfoGauge.With(prometheus.Labels{"version": appVersion}).Set(1)
+
+	// Metrics server (async routine)
+	if len(metricsEndpoint) > 0 {
+		var metricsServeMux http.ServeMux
+		metricsServeMux.Handle("/", promhttp.Handler())
+		go func() {
+			if err := http.ListenAndServe(metricsEndpoint, &metricsServeMux); err != nil {
+				fmt.Fprintf(os.Stderr, "Error while running metrics HTTP server: %v", err)
+			}
+		}()
 	}
-	if err := http.ListenAndServe(endpoint, nil); err != nil {
-		return fmt.Errorf("Error while running HTTP server: %v", err)
+
+	// Main server (blocking)
+	var mainServeMux http.ServeMux
+	mainServeMux.HandleFunc("/", handleMainRequest)
+	if err := http.ListenAndServe(endpoint, &mainServeMux); err != nil {
+		return fmt.Errorf("Error while running main HTTP server: %v", err)
 	}
 
 	return nil
 }
 
-func handleRequest(response http.ResponseWriter, request *http.Request) {
+func handleMainRequest(response http.ResponseWriter, request *http.Request) {
 	metricsTotalCounter.Inc()
 
 	// Get local or forwarded proto, domain and from-addr
@@ -227,9 +237,8 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 
 	// Check if no matches
 	if bestRouteID == -1 {
+		http.Error(response, "404 Not found.\n", http.StatusNotFound)
 		metricsNotFoundCounter.Inc()
-		response.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(response, "404 Not found.\n")
 		logRequest(realFrom, 404, "", sourceURL, "")
 		return
 	}
@@ -246,9 +255,8 @@ func handleRequest(response http.ResponseWriter, request *http.Request) {
 			fmt.Fprintf(os.Stderr, "  Destination URL (template): \"%v\"\n", route.DestinationURL)
 			fmt.Fprintf(os.Stderr, "  Destination URL (actual): \"%v\"\n", destinationURL)
 		}
+		http.Error(response, "400 Malformed destination.\n", http.StatusBadRequest)
 		metricsRouteMalformedDestinationCounter.With(prometheus.Labels{"route": route.ID}).Inc()
-		response.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(response, "400 Malformed destination.\n")
 		logRequest(realFrom, 400, route.ID, sourceURL, "")
 		return
 	}

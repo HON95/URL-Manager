@@ -9,12 +9,15 @@ services:
       - '--debug'
       - '--log'
       - '--endpoint=:8000'
-      - '--metrics=/metrics'
+      - '--metrics-endpoint=:8001'
     user: 1000:1000
     environment:
       - TZ=Europe/Oslo
     volumes:
       - ./routes.json:/app/routes.json:ro
+    ports:
+      - 127.0.0.1:8000:8000/tcp
+      - 127.0.0.1:8001:8001/tcp
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.url-manager-http.entrypoints=http'
