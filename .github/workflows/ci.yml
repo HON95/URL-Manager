@@ -59,14 +59,15 @@ jobs:
       uses: docker/setup-buildx-action@v1
     - name: Extract version
       run: |
-        echo ${GITHUB_REF}
-        echo "version=$(echo ${GITHUB_REF#refs/tags/v})" | tee -a $GITHUB_ENV
+        # Get version from git tag
+        VERSION="$(echo ${GITHUB_REF#refs/tags/v})"
+        echo "version=$VERSION" | tee -a $GITHUB_ENV
         # Check if semantic version (tree numbers)
-        echo ${{env.version}} | grep -Po '^\d+\.\d+\.\d+'
+        echo $VERSION | grep -Po '^\d+\.\d+\.\d+'
         # Extract other version representations
-        echo "version_major=$(echo ${{env.version}} | grep -Po '^\d+')" | tee -a $GITHUB_ENV
-        echo "version_minor=$(echo ${{env.version}} | grep -Po '^\d+\.\d+')" | tee -a $GITHUB_ENV
-        echo "version_patch=$(echo ${{env.version}} | grep -Po '^\d+\.\d+\.\d+')" | tee -a $GITHUB_ENV
+        echo "version_major=$(echo $VERSION | grep -Po '^\d+')" | tee -a $GITHUB_ENV
+        echo "version_minor=$(echo $VERSION | grep -Po '^\d+\.\d+')" | tee -a $GITHUB_ENV
+        echo "version_patch=$(echo $VERSION | grep -Po '^\d+\.\d+\.\d+')" | tee -a $GITHUB_ENV
     - name: Add version to metadata file
       run: sed -i "s/const appVersion.*/const appVersion = \"${{env.version}}\"/g" meta.go
     - name: Login to DockerHub
