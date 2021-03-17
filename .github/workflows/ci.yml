@@ -23,6 +23,7 @@ jobs:
       run: go install golang.org/x/lint/golint@latest && ~/go/bin/golint -set_exit_status ./...
     - name: Build
       run: go build -o url-manager
+
   publish-bleeding:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: check
@@ -33,9 +34,9 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
     - name: Update version
-      run: |
-        echo "version=$(echo 0.0.0-SNAPSHOT+$(TZ=Etc/GMT date "+%Y-%m-%dT%H:%M:%SZ"))" >> $GITHUB_ENV
-        sed -i "s/const appVersion.*/const appVersion = \"${{ env.version }}\"/g" meta.go
+      run: echo "version=$(echo 0.0.0-SNAPSHOT+$(TZ=Etc/GMT date "+%Y-%m-%dT%H:%M:%SZ"))" >> $GITHUB_ENV
+    - name: Add version to metadata file
+      run: sed -i "s/const appVersion.*/const appVersion = \"${{ env.version }}\"/g" meta.go
     - name: Login to DockerHub
       uses: docker/login-action@v1
       with:
@@ -46,6 +47,7 @@ jobs:
       with:
         push: true
         tags: hon95/url-manager:latest
+
   publish-stable:
     if: github.event_name == 'release' && github.event.action == 'published' && startsWith(github.ref, 'refs/tags/v')
     needs: check
@@ -55,12 +57,15 @@ jobs:
       uses: actions/checkout@v2
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
-    - name: Update version
+    - name: Extract version
       run: |
+        # Breaks if not semantic version (tree numbers)
         echo "version=$(echo ${GITHUB_REF#refs/tags/v})" >> $GITHUB_ENV
         echo "version_major=$(echo ${{ env.version }} | grep -Po '^\d+')" >> $GITHUB_ENV
         echo "version_minor=$(echo ${{ env.version }} | grep -Po '^\d+\.\d+')" >> $GITHUB_ENV
-        sed -i "s/const appVersion.*/const appVersion = \"${{ env.version }}\"/g" meta.go
+        echo "version_patch=$(echo ${{ env.version }} | grep -Po '^\d+\.\d+\.\d+')" >> $GITHUB_ENV
+    - name: Add version to metadata file
+      run: sed -i "s/const appVersion.*/const appVersion = \"${{ env.version }}\"/g" meta.go
     - name: Login to DockerHub
       uses: docker/login-action@v1
       with:
@@ -70,4 +75,4 @@ jobs:
       uses: docker/build-push-action@v2
       with:
         push: true
-        tags: hon95/url-manager:latest, hon95/url-manager:${{ env.version_major }}, hon95/url-manager:${{ env.version_minor }}, hon95/url-manager:${{ env.version }}
+        tags: hon95/url-manager:latest, hon95/url-manager:${{ env.version_major }}, hon95/url-manager:${{ env.version_minor }}, hon95/url-manager:${{ env.version_patch }}
