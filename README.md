@@ -32,47 +32,11 @@ Route fields:
 | `priority` | `0` | If multiple routes match the source URL, the one with the highest priority is chosen. |
 | `redirect_status` | `302` | The HTTP redirect status code to use. |
 
+Route file example: [routes.json](dev/routes.json)
+
 ### Docker
 
 See the dev/example Docker Compose file: [docker-compose.yml](dev/docker-compose.yml)
-
-### Example Routes
-
-Route file example: [routes.json](dev/routes.json)
-
-HTTP-HTTPS redirect:
-
-```json
-{
-    "id": "http-redirect",
-    "source_url": "^http://(.*)$",
-    "destination_url": "https://$1",
-    "redirect_status": 308,
-    "priority": 1000,
-}
-```
-
-www redirect:
-
-```json
-{
-    "id": "www-redirect",
-    "source_url": "^https://www\\.(.*)$",
-    "destination_url": "https://$1",
-    "redirect_status": 308,
-    "priority": 1000
-}
-```
-
-External redirect:
-
-```json
-{
-    "id": "discord",
-    "source_url": "^https://example\\.net/discord$",
-    "destination_url": "https://discord.com/invite/X"
-}
-```
 
 ## Development
 
