@@ -44,7 +44,7 @@ jobs:
       uses: docker/build-push-action@v2
       with:
         build-args: |
-          ARG APP_VERSION=${{env.version}}
+          APP_VERSION=${{env.version}}
         tags: |
           hon95/url-manager:latest
         push: true
@@ -78,7 +78,7 @@ jobs:
       uses: docker/build-push-action@v2
       with:
         build-args: |
-          ARG APP_VERSION=${{env.version}}
+          APP_VERSION=${{env.version}}
         tags: |
           hon95/url-manager:latest
           hon95/url-manager:${{env.version_major}}
