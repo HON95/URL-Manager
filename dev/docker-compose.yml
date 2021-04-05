@@ -3,8 +3,10 @@ version: '3.7'
 services:
   url-manager:
     image: hon95/url-manager:latest
-    # Dev
-    build: ..
+    build:
+      context: ..
+      args:
+        - APP_VERSION=0.0.0-SNAPSHOT
     command:
       - '--debug'
       - '--log'

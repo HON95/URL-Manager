@@ -1,7 +1,10 @@
+ARG APP_VERSION=0.0.0-SNAPSHOT
+
 ## Build stage
 FROM golang:1.16-alpine AS build
-WORKDIR /app
+ARG APP_VERSION
 ENV CGO_ENABLED=0
+WORKDIR /app
 
 # Download deps
 COPY go.mod ./
@@ -10,7 +13,7 @@ RUN go mod download
 
 # Build app
 COPY *.go ./
-RUN go build -v -o url-manager
+RUN go build -v -ldflags="-X 'main.appVersion=${APP_VERSION}'" -o url-manager
 
 # Test
 RUN go test -v .
