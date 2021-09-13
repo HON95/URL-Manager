@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -47,23 +48,72 @@ var metricsRouteMalformedDestinationCounter = promauto.NewCounterVec(prometheus.
 	Help: "The number of times a route has resulted in an invalid destination URL.",
 }, []string{"route"})
 
-type route struct {
-	ID             string `json:"id"`
-	SourceURL      string `json:"source_url"`
-	DestinationURL string `json:"destination_url"`
-	RedirectStatus int    `json:"redirect_status"`
-	Priority       int    `json:"priority"`
+// Route is a matching for an incoming URL and an associated redirect.
+type Route struct {
+	ID                   string         `json:"id"`
+	Disabled             bool           `json:"disabled"`
+	SourceURL            string         `json:"source_url"`
+	SourceScheme         string         `json:"source_scheme"`
+	SourceHost           string         `json:"source_host"`
+	SourcePort           string         `json:"source_port"`
+	SourcePath           string         `json:"source_path"`
+	SourceQuery          string         `json:"source_query"`
+	DestinationURL       string         `json:"destination_url"`
+	RedirectStatus       int            `json:"redirect_status"`
+	Priority             int            `json:"priority"`
+	CompiledSourceURL    *regexp.Regexp `json:"-"`
+	CompiledSourceScheme *regexp.Regexp `json:"-"`
+	CompiledSourceHost   *regexp.Regexp `json:"-"`
+	CompiledSourcePort   *regexp.Regexp `json:"-"`
+	CompiledSourcePath   *regexp.Regexp `json:"-"`
+	CompiledSourceQuery  *regexp.Regexp `json:"-"`
 }
 
-type compiledRoute struct {
-	route
-	CompiledSourceURL *regexp.Regexp
+// List of all routes
+var routes []*Route
+
+// Tree of composite source routes (group on same raw regexes)
+var compositeRoutes map[string]*schemeRouteGroup
+
+type schemeRouteGroup struct {
+	compiledScheme *regexp.Regexp
+	hostRoutes     map[string]*hostRouteGroup
 }
 
-var routes []compiledRoute
+type hostRouteGroup struct {
+	compiledHost *regexp.Regexp
+	portRoutes   map[string]*portRouteGroup
+}
+
+type portRouteGroup struct {
+	compiledPort *regexp.Regexp
+	pathRoutes   map[string]*pathRouteGroup
+}
+
+type pathRouteGroup struct {
+	compiledPath *regexp.Regexp
+	queryRoutes  map[string]*queryRouteGroup
+}
+
+type queryRouteGroup struct {
+	compiledQuery *regexp.Regexp
+	routes        []*Route
+}
+
+// List of URL source routes
+var urlRoutes map[string]*urlRouteGroup
+
+type urlRouteGroup struct {
+	compiledURL *regexp.Regexp
+	routes      []*Route
+}
 
 func main() {
 	fmt.Printf("%v version %v by %v.\n\n", appName, appVersion, appAuthor)
+
+	// Init global data structures
+	compositeRoutes = make(map[string]*schemeRouteGroup)
+	urlRoutes = make(map[string]*urlRouteGroup)
 
 	parseCliArgs()
 
@@ -104,19 +154,21 @@ func readRouteFile() error {
 	}
 
 	// Parse routes from file
-	var rawRoutes []route
-	parseErr := json.Unmarshal(data, &rawRoutes)
+	parseErr := json.Unmarshal(data, &routes)
 	if parseErr != nil {
 		return fmt.Errorf("Failed to parse routes from file (malformed JSON file?): \n%v", parseErr)
 	}
 
-	// Validate and compile routes
-	routes = make([]compiledRoute, 0)
-	for i, rawRoute := range rawRoutes {
-		if compiledRoute, err := compileRoute(&rawRoute); err == nil {
-			routes = append(routes, compiledRoute)
-		} else {
-			fmt.Fprintf(os.Stderr, "Route #%v is malformed: %v\n", i, err)
+	// Load routes by compiling regexes and inserting into data structures
+	for i, route := range routes {
+		if route.Disabled {
+			if enableDebug {
+				fmt.Printf("Skipping disabled route \"%v\".\n", route.ID)
+			}
+			continue
+		}
+		if err := loadRoute(route); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load route #%v: %v\n", i, err)
 		}
 	}
 
@@ -126,7 +178,15 @@ func readRouteFile() error {
 		for i, route := range routes {
 			fmt.Printf("Route %v:\n", i)
 			fmt.Printf("  Name:            %v\n", route.ID)
-			fmt.Printf("  Source URL:      %v\n", route.SourceURL)
+			if route.SourceURL != "" {
+				fmt.Printf("  Source URL:      %v\n", route.SourceURL)
+			} else {
+				fmt.Printf("  Source scheme:   %v\n", route.SourceScheme)
+				fmt.Printf("  Source host:     %v\n", route.SourceHost)
+				fmt.Printf("  Source port:     %v\n", route.SourcePort)
+				fmt.Printf("  Source path:     %v\n", route.SourcePath)
+				fmt.Printf("  Source query:    %v\n", route.SourceQuery)
+			}
 			fmt.Printf("  Destination URL: %v\n", route.DestinationURL)
 			fmt.Printf("  Redirect status: %v\n", route.RedirectStatus)
 			fmt.Printf("  Priority:        %v\n", route.Priority)
@@ -136,49 +196,137 @@ func readRouteFile() error {
 	return nil
 }
 
-func compileRoute(rawRoute *route) (compiledRoute, error) {
-	var compiledRoute compiledRoute
-
+func loadRoute(route *Route) error {
 	// ID
-	if len(rawRoute.ID) == 0 || !compiledRouteIDPattern.MatchString(rawRoute.ID) {
-		return compiledRoute, fmt.Errorf("Route ID contains illegal characters")
-	}
-	compiledRoute.ID = rawRoute.ID
-
-	// Source URL
-	if len(rawRoute.SourceURL) == 0 {
-		return compiledRoute, fmt.Errorf("Missing source URL")
-	}
-	compiledRoute.SourceURL = rawRoute.SourceURL
-	if result, err := regexp.Compile(rawRoute.SourceURL); err == nil {
-		compiledRoute.CompiledSourceURL = result
-	} else {
-		return compiledRoute, fmt.Errorf("Route source URL regexp won't compile.\n%v", err)
+	if route.ID == "" || !compiledRouteIDPattern.MatchString(route.ID) {
+		return fmt.Errorf("Route ID contains illegal characters")
 	}
 
 	// Destination URL
-	// Postpone format check for after variable substitution
-	if len(rawRoute.DestinationURL) == 0 {
-		return compiledRoute, fmt.Errorf("Missing destination URL")
+	// Postpone URL format check for after variable substitution
+	if route.DestinationURL == "" {
+		return fmt.Errorf("Missing destination URL")
 	}
-	compiledRoute.DestinationURL = rawRoute.DestinationURL
-
-	// Priority
-	// Defaults to 0
-	compiledRoute.Priority = rawRoute.Priority
 
 	// Redirect status
-	status := rawRoute.RedirectStatus
-	switch {
-	case status == 0:
-		compiledRoute.RedirectStatus = defaultRedirectStatus
-	case status >= 301 && status <= 308:
-		compiledRoute.RedirectStatus = status
-	default:
-		return compiledRoute, fmt.Errorf("Invalid redirect status value")
+	status := &route.RedirectStatus
+	if *status == 0 {
+		*status = defaultRedirectStatus
+	} else if *status < 300 || *status > 399 {
+		return fmt.Errorf("Invalid redirect status value")
 	}
 
-	return compiledRoute, nil
+	// Source URL or composite
+	hasSourceURL := route.SourceURL != ""
+	hasSourceComposite := route.SourceScheme != "" || route.SourceHost != "" || route.SourcePort != "" || route.SourcePath != "" || route.SourceQuery != ""
+	if !hasSourceURL && !hasSourceComposite {
+		return fmt.Errorf("Missing source URL or composite")
+	}
+	if hasSourceURL && hasSourceComposite {
+		return fmt.Errorf("Route can't contain both a source URL and any of the source composite fields")
+	}
+
+	if hasSourceURL {
+		var urlGroup *urlRouteGroup
+		if group, ok := urlRoutes[route.SourceURL]; ok {
+			urlGroup = group
+		} else {
+			urlGroup = &urlRouteGroup{}
+			if result, err := regexp.Compile(route.SourceURL); err == nil {
+				urlGroup.compiledURL = result
+			} else {
+				return fmt.Errorf("Route source URL regexp won't compile.\n%v", err)
+			}
+			urlGroup.routes = make([]*Route, 0)
+			urlRoutes[route.SourceURL] = urlGroup
+		}
+		route.CompiledSourceURL = urlGroup.compiledURL
+		urlGroup.routes = append(urlGroup.routes, route)
+	} else {
+		// Scheme
+		var schemeGroup *schemeRouteGroup
+		if group, ok := compositeRoutes[route.SourceScheme]; ok {
+			schemeGroup = group
+		} else {
+			schemeGroup = &schemeRouteGroup{}
+			if result, err := regexp.Compile(route.SourceScheme); err == nil {
+				schemeGroup.compiledScheme = result
+			} else {
+				return fmt.Errorf("Route source scheme regexp won't compile.\n%v", err)
+			}
+			schemeGroup.hostRoutes = make(map[string]*hostRouteGroup)
+			compositeRoutes[route.SourceScheme] = schemeGroup
+		}
+		route.CompiledSourceScheme = schemeGroup.compiledScheme
+
+		// Host
+		var hostGroup *hostRouteGroup
+		if group, ok := schemeGroup.hostRoutes[route.SourceHost]; ok {
+			hostGroup = group
+		} else {
+			hostGroup = &hostRouteGroup{}
+			if result, err := regexp.Compile(route.SourceHost); err == nil {
+				hostGroup.compiledHost = result
+			} else {
+				return fmt.Errorf("Route source host regexp won't compile.\n%v", err)
+			}
+			hostGroup.portRoutes = make(map[string]*portRouteGroup)
+			schemeGroup.hostRoutes[route.SourceHost] = hostGroup
+		}
+		route.CompiledSourceHost = hostGroup.compiledHost
+
+		// Port
+		var portGroup *portRouteGroup
+		if group, ok := hostGroup.portRoutes[route.SourcePort]; ok {
+			portGroup = group
+		} else {
+			portGroup = &portRouteGroup{}
+			if result, err := regexp.Compile(route.SourcePort); err == nil {
+				portGroup.compiledPort = result
+			} else {
+				return fmt.Errorf("Route source port regexp won't compile.\n%v", err)
+			}
+			portGroup.pathRoutes = make(map[string]*pathRouteGroup)
+			hostGroup.portRoutes[route.SourcePort] = portGroup
+		}
+		route.CompiledSourcePort = portGroup.compiledPort
+
+		// Path
+		var pathGroup *pathRouteGroup
+		if group, ok := portGroup.pathRoutes[route.SourcePath]; ok {
+			pathGroup = group
+		} else {
+			pathGroup = &pathRouteGroup{}
+			if result, err := regexp.Compile(route.SourcePath); err == nil {
+				pathGroup.compiledPath = result
+			} else {
+				return fmt.Errorf("Route source path regexp won't compile.\n%v", err)
+			}
+			pathGroup.queryRoutes = make(map[string]*queryRouteGroup)
+			portGroup.pathRoutes[route.SourcePath] = pathGroup
+		}
+		route.CompiledSourcePath = pathGroup.compiledPath
+
+		// Query
+		var queryGroup *queryRouteGroup
+		if group, ok := pathGroup.queryRoutes[route.SourceQuery]; ok {
+			queryGroup = group
+		} else {
+			queryGroup = &queryRouteGroup{}
+			if result, err := regexp.Compile(route.SourceQuery); err == nil {
+				queryGroup.compiledQuery = result
+			} else {
+				return fmt.Errorf("Route source query regexp won't compile.\n%v", err)
+			}
+			queryGroup.routes = make([]*Route, 0)
+			pathGroup.queryRoutes[route.SourceQuery] = queryGroup
+		}
+		route.CompiledSourceQuery = queryGroup.compiledQuery
+
+		queryGroup.routes = append(queryGroup.routes, route)
+	}
+
+	return nil
 }
 
 func runServers() error {
@@ -187,7 +335,7 @@ func runServers() error {
 	// Metrics server (async routine)
 	if len(metricsEndpoint) > 0 {
 		var metricsServeMux http.ServeMux
-		metricsServeMux.Handle("/", promhttp.Handler())
+		metricsServeMux.Handle("/metrics", promhttp.Handler())
 		go func() {
 			if err := http.ListenAndServe(metricsEndpoint, &metricsServeMux); err != nil {
 				fmt.Fprintf(os.Stderr, "Error while running metrics HTTP server: %v", err)
@@ -225,28 +373,44 @@ func handleMainRequest(response http.ResponseWriter, request *http.Request) {
 	// Build source URL
 	sourceURL := fmt.Sprintf("%v://%v%v", realProto, realHost, request.URL)
 
-	// Find matching routes (linear search)
-	var bestRouteID = -1
-	for i, route := range routes {
-		if route.CompiledSourceURL.MatchString(sourceURL) {
-			if bestRouteID == -1 || route.Priority > routes[bestRouteID].Priority {
-				bestRouteID = i
-			}
-		}
-	}
-
-	// Check if no matches
-	if bestRouteID == -1 {
+	// Find matching route
+	route := findBestRoute(&sourceURL)
+	if route == nil {
 		http.Error(response, "404 Not found.\n", http.StatusNotFound)
 		metricsNotFoundCounter.Inc()
 		logRequest(realFrom, 404, "", sourceURL, "")
 		return
 	}
+	metricsRouteChosenCounter.With(prometheus.Labels{"route": route.ID}).Inc()
 
 	// Build destination URL
-	route := &routes[bestRouteID]
-	metricsRouteChosenCounter.With(prometheus.Labels{"route": route.ID}).Inc()
-	destinationURL := route.CompiledSourceURL.ReplaceAllString(sourceURL, route.DestinationURL)
+	// TODO require all to be named?
+	// destinationURL := route.CompiledSourceURL.ReplaceAllString(sourceURL, route.DestinationURL)
+	// TODO for url and composite
+	// TODO for each non-nil pattern
+	varMatches := make(map[string]string)
+	varCaptures := route.CompiledSourceURL.FindStringSubmatch(sourceURL)
+	varCaptureNames := route.CompiledSourceURL.SubexpNames()
+	for i := range varCaptures {
+		if i > 0 {
+			if varCaptureNames[i] != "" {
+				varMatches[varCaptureNames[i]] = varCaptures[i]
+			}
+		}
+	}
+
+	// TODO
+	varOldNewPairs := make([]string, 0)
+	for key, value := range varMatches {
+		varRepr := fmt.Sprintf("${%v}", key)
+		varOldNewPairs = append(varOldNewPairs, varRepr)
+		varOldNewPairs = append(varOldNewPairs, value)
+		fmt.Printf("REPLACE \"%v\" WITH \"%v\"\n", varRepr, value)
+	}
+	varReplacer := strings.NewReplacer(varOldNewPairs...)
+	destinationURL := varReplacer.Replace(route.DestinationURL)
+
+	// TODO
 	if _, err := url.ParseRequestURI(destinationURL); err != nil {
 		if enableDebug {
 			fmt.Fprintf(os.Stderr, "Malformed destination:\n")
@@ -264,6 +428,27 @@ func handleMainRequest(response http.ResponseWriter, request *http.Request) {
 	// Redirect
 	http.Redirect(response, request, destinationURL, route.RedirectStatus)
 	logRequest(realFrom, route.RedirectStatus, route.ID, sourceURL, destinationURL)
+}
+
+func findBestRoute(sourceURL *string) *Route {
+	var bestRoute *Route
+
+	// Check composite routes
+	// TODO implement
+	// TODO "" means any
+
+	// Check URL routes
+	for _, urlGroup := range urlRoutes {
+		if urlGroup.compiledURL.MatchString(*sourceURL) {
+			for _, route := range urlGroup.routes {
+				if bestRoute == nil || route.Priority > bestRoute.Priority {
+					bestRoute = route
+				}
+			}
+		}
+	}
+
+	return bestRoute
 }
 
 func logRequest(clientAddr string, httpResult int, routeID string, sourceURL string, destinationURL string) {

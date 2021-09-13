@@ -1,19 +1,14 @@
 [{
-    "id": "http-redirect",
-    "source_url": "^http://(.*)$",
-    "destination_url": "https://$1",
-    "priority": 1000,
+    "id": "http-all",
+    "disabled": true,
+    "source_url": "^http://(?P<1>.*)$",
+    "destination_url": "https://${1}",
+    "priority": 1010,
     "redirect_status": 308
 },{
-    "id": "http-redirect-dev",
-    "source_url": "^http://(localhost):8080/(.*)$",
-    "destination_url": "https://$1:8443/$2",
-    "priority": 1010,
-    "redirect_status": 307
-},{
-    "id": "www-redirect",
-    "source_url": "^https://www\\.(.*)$",
-    "destination_url": "https://$1",
+    "id": "www-all",
+    "source_url": "^https://www\\.(?<1>.*)$",
+    "destination_url": "https://${1}",
     "priority": 1000,
     "redirect_status": 308
 },{
@@ -22,25 +17,31 @@
     "destination_url": "/world"
 },{
     "id": "hello-world-number",
-    "source_url": "^https?://localhost(?::[0-9]+)?/hello/([0-9]+)$",
-    "destination_url": "/world/$1"
+    "source_url": "^https?://localhost(?::[0-9]+)?/hello/(?<1>[0-9]+)$",
+    "destination_url": "/world/${1}"
 },{
-    "id": "not-used",
-    "source_url": "^https://example\\.net/test$",
+    "id": "example-http-redirect",
+    "source_url": "^http://(?P<1>example\\.net:8080/.*)$",
+    "destination_url": "https://${1}",
+    "priority": 1010,
+    "redirect_status": 308
+},{
+    "id": "example-priority-low",
+    "source_url": "^https://example\\.net:8443/test$",
     "destination_url": "/a",
     "priority": 100
 },{
-    "id": "used",
-    "source_url": "^http://example\\.net:8080/test$",
+    "id": "example-priority-high",
+    "source_url": "^http://example\\.net:8443/test$",
     "destination_url": "/b",
     "priority": 200
 },{
-    "id": "permanent-redirect",
-    "source_url": "^http://example\\.net:8080/test2$",
+    "id": "example-permanent-redirect",
+    "source_url": "^http://example\\.net:8443/test2$",
     "destination_url": "/test3",
     "redirect_status": 308
 },{
-    "id": "https-example-net-discord",
-    "source_url": "^https://example\\.net/discord$",
+    "id": "example-discord",
+    "source_url": "^https://example\\.net:8443/discord$",
     "destination_url": "https://discord.com/invite/X"
 }]

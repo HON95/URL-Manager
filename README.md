@@ -28,15 +28,19 @@ Route fields:
 | - | - | - |
 | `id` | (required) | A unique ID for the route. May contain only alphanumeric characters, hyphens and underscores. |
 | `source_url` | (required) | A regex pattern to match the source URL against. See the notes below. |
-| `destination_url` | (required) | The URL to redirect to. It may reference capture groups (`()`) from the source URL pattern as `$1`, `$2` etc. to create dynamic routes. |
+| `destination_url` | (required) | A template for the URL to redirect to. It may reference capture groups from the source URL pattern as `${name}`. |
 | `priority` | `0` | If multiple routes match the source URL, the one with the highest priority is chosen. |
 | `redirect_status` | `302` | The HTTP redirect status code to use. |
 
-Source URL pattern notes:
+Source matching notes:
 
-- It should contain the full regex-escaped URL, including the beginning and end anchors (`^` and `$`), to prevent ambiguity.
+- For composite source matching, all fields except one may be left empty to match anything.
+- Ports 80 for HTTP and 443 for HTTPS are generally always omitted.
+- Many HTTP reverse proxies typically don't include the port in the forwarded request. If you're using one that doesn't forward it, take care to not try to match it either.
+- Fields matching something should including the full field to match, including the beginning and end anchors (`^` and `$`), to prevent ambiguity.
 - The trailing `/` is required when no path exists.
 - Period (`.`) must be escaped as `\\.`.
+- Matches must be named (e.g. `(?P<name>abc)`) in order to be referenced in the destination URL template.
 - The pattern matching is using [Go's regexp package](https://golang.org/pkg/regexp/), which may have some minor dialect differences from other regexp engines.
 
 Route file example: [routes.json](dev/routes.json)

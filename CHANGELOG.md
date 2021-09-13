@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added source scheme, host, port, path and query patterns to match on optionally instead the full URL.
+
 ### Changed
+
+- Changed destination URL variables to have to follow the `${name}` format, where source matches must be named in order to be referenced.
+- Changed path for metrics endpoint from `/` to `/metrics` (slightly breaking).
 
 ### Deprecated
 
