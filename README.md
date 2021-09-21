@@ -48,7 +48,7 @@ See the dev/example Docker Compose file: [docker-compose.yml](dev/docker-compose
 ## Development
 
 - Build (Go): `go build -o url-manager`
-- Lint: `golint ./..`
+- Lint: `golint ./...`
 - Build and run along Traefik (Docker Compose): `docker-compose -f dev/docker-compose.yml up --force-recreate --build`
 
 ## TODO
